@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stagebezoeken – Weekoverzicht Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg: #0f172a;            /* slate-900 */
+      --panel:#111827;          /* gray-900 */
+      --muted:#475569;          /* slate-600 */
+      --text:#e5e7eb;           /* gray-200 */
+      --accent:#60a5fa;         /* blue-400 */
+      --accent-2:#34d399;       /* emerald-400 */
+      --grid:#1f2937;           /* gray-800 */
+      --event-border:#0ea5e9;   /* sky-500 */
+      --dim: 0.25;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b1224 0%,#0f172a 100%);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+
+    header{position:sticky;top:0;z-index:50;background:rgba(17,24,39,.75);backdrop-filter:blur(12px);border-bottom:1px solid #1f2937}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+
+    .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    .controls .btn{background:#111827;border:1px solid #1f2937;color:var(--text);padding:8px 12px;border-radius:12px;cursor:pointer}
+    .controls .btn:hover{border-color:#374151}
+    .controls input[type=file]{display:none}
+    .uploader{
+      border:1px dashed #334155;border-radius:16px;padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#cbd5e1;background:#0b1222
+    }
+    .uploader.drag{border-color:var(--accent)}
+
+    .legend{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .chip{display:inline-flex;align-items:center;gap:6px;background:#0b1222;border:1px solid #1f2937;padding:6px 8px;border-radius:999px;font-size:12px}
+    .chip > i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+    main{max-width:1200px;margin:16px auto;padding:0 16px}
+
+    /* Calendar Grid */
+    .calendar{position:relative;border:1px solid #1f2937;border-radius:16px;overflow:hidden;background:var(--panel);}
+    .cal-head{display:grid;grid-template-columns:100px repeat(7,1fr);background:#0b1222;border-bottom:1px solid #1f2937}
+    .cal-head div{padding:10px 8px;font-weight:600;text-align:center}
+    .cal-body{display:grid;grid-template-columns:100px repeat(7,1fr);height:900px;position:relative}
+    .hours{background:#0b1222;border-right:1px solid #1f2937}
+    .hour{height:60px;border-bottom:1px solid #1f2937;color:#9ca3af;font-size:12px;padding:4px 8px}
+    .day-col{position:relative;border-right:1px solid #1f2937;background:linear-gradient(180deg, transparent 59px, var(--grid) 60px);background-size:100% 60px}
+    .day-col:last-child{border-right:none}
+
+    .event{position:absolute;left:6px;border:1px solid var(--event-border);border-left:4px solid var(--event-border);background:rgba(14,165,233,.12);border-radius:10px;padding:6px 8px;overflow:hidden;z-index:1;width:calc(100% - 12px)}
+    .event:hover{z-index:2;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    .event .title{font-weight:700;font-size:12px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+    .event .meta{font-size:11px;opacity:.9}
+    .event .small{font-size:10px;opacity:.8}
+    .event[data-dim="true"]{filter:grayscale(1) brightness(.6);opacity:.55}
+    .event[data-selected="true"]{background:rgba(52,211,153,.12);border-color:#34d399;border-left-color:#34d399;box-shadow:0 0 0 1px rgba(52,211,153,.25) inset,0 10px 30px rgba(16,185,129,.18)}
+
+    .weekbar{display:flex;gap:8px;align-items:center;margin:12px 0}
+    .weekbar h2{margin:0;font-size:18px;font-weight:700}
+    .weekbar .btn{padding:6px 10px;border-radius:10px;background:#0b1222;border:1px solid #1f2937;color:#cbd5e1;cursor:pointer}
+
+    .footer{opacity:.7;margin-top:10px;font-size:12px}
+
+    /* Tooltip */
+    .tooltip{position:fixed;pointer-events:none;background:#0b1222;border:1px solid #1f2937;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:10px 12px;max-width:360px;color:#e5e7eb;font-size:12px;line-height:1.35;z-index:999;display:none}
+    .tooltip .tiptitle{font-weight:700;margin-bottom:6px}
+    .tooltip table{width:100%;border-collapse:separate;border-spacing:0 4px}
+    .tooltip td{vertical-align:top}
+    .tooltip td:first-child{color:#93a2b2;white-space:nowrap;padding-right:8px}
+  </style>
+<style id="hideOverbodigStyle">
+/* Verberg alle uitgegrijsde events wanneer de 'hide-overbodig' modus actief is */
+.hide-overbodig .event[data-dim="true"]{ display: none !important; }
+</style>
+</head>
+<body>
+
+  <header>
+    <div class="wrap">
+      <div class="controls">
+        <label class="uploader" id="dropzone" for="fileInput">
+          <strong>Excel-bestanden laden</strong> (één bestand per student) – sleep en zet neer of klik
+        </label>
+        <input id="fileInput" type="file" accept=".xlsx,.xls" multiple />
+
+        <button class="btn" id="clearBtn">Alles wissen</button>
+        <button class="btn" id="resetSelectionsBtn">Selecties resetten</button>
+        <button class="btn" id="exportPdfBtn">Exporteer selectie (PDF)</button>
+        <button class="btn" id="exportIcsBtn">Exporteer selectie (ICS)</button>
+        <button class="btn" id="toggleHiddenBtn">Verberg overbodige events</button>
+        <button class="btn" id="toggleWeekendBtn">Verberg weekend</button>
+
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="weekbar">
+      <button class="btn" id="prevWeek">◀ Vorige</button>
+      <h2 id="weekTitle">Week</h2>
+      <button class="btn" id="nextWeek">Volgende ▶</button>
+      <input class="btn" id="weekPicker" type="date" />
+    </div>
+
+    <div class="calendar">
+      <div id="tooltip" class="tooltip"></div>
+      <div class="cal-head" id="calHead"></div>
+      <div class="cal-body" id="calBody"></div>
+    </div>
+
+    <div class="footer">Tip: klik een event om je bezoek te kiezen. Alle andere events van die student worden grijs weergegeven. Klik opnieuw om de keuze te verwijderen.</div>
+  </main>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js">
+
+
+
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/isoWeek.min.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/customParseFormat.min.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/isBetween.min.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/nl.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js">
+
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+
+
+</script>
+
+  <script>
+    dayjs.extend(window.dayjs_plugin_isoWeek);
+    dayjs.extend(window.dayjs_plugin_customParseFormat);
+    dayjs.extend(window.dayjs_plugin_isBetween);
+    dayjs.locale('nl');
+
+    const HOUR_START = 7;    // earliest time shown
+    const HOUR_END   = 20;   // latest time shown
+    const ROW_HEIGHT = 60;   // 60px per hour
+
+    const state = {
+      students: new Map(),   // key: studentId, value: {name,color,events:[]}
+      selectedByStudent: new Map(), // studentId -> eventId
+      eventById: new Map(),
+      showWeekend: true,
+      currentMonday: startOfISOWeek(dayjs())
+    };
+
+    // --- Helpers ---
+    function startOfISOWeek(d){
+      return d.isoWeekday(1).startOf('day');
+    }
+    function clamp(v, a, b){ return Math.min(Math.max(v,a), b); }
+
+    function parseDate(value){
+      if(!value) return null;
+      if(typeof value === 'number'){
+        // Excel serial date
+        const jsDate = XLSX.SSF.parse_date_code(value);
+        if(!jsDate) return null;
+        return dayjs(new Date(jsDate.y, (jsDate.m-1), jsDate.d));
+      }
+      const s = String(value).trim();
+      const fmts = ['DD/MM/YYYY','D/M/YYYY','DD-MM-YYYY','D-M-YYYY','YYYY-MM-DD'];
+      for(const f of fmts){
+        const d = dayjs(s, f, true);
+        if(d.isValid()) return d.startOf('day');
+      }
+      const d2 = dayjs(s);
+      return d2.isValid() ? d2.startOf('day') : null;
+    }
+
+    function parseTimeToMinutes(val){
+      if(val == null) return null;
+      if(typeof val === 'number'){
+        // Excel stores times as fraction of a day
+        return Math.round(val * 24 * 60);
+      }
+      const m = String(val).trim().match(/^(\d{1,2})[:.](\d{2})$/);
+      if(m){
+        return (+m[1])*60 + (+m[2]);
+      }
+      return null;
+    }
+
+    // Generate color per student
+    function colorFor(index){
+      const hues = [200,160,45,280,10,320,95,260,20,140];
+      const h = hues[index % hues.length];
+      return {
+        bg:`hsla(${h},80%,60%,.15)`,
+        border:`hsl(${h},85%,55%)`
+      };
+    }
+
+    function normalizeHeaderKey(key){
+      return String(key || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+    }
+
+    function pick(obj, keys){
+      // Eerst exact proberen (snelste route voor de bestaande documenten).
+      for (const k of keys){
+        const v = obj[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      }
+      // Daarna tolerant zoeken: hoofdletters en overtollige spaties in kolomnamen negeren.
+      const normalized = new Map();
+      for (const [key, value] of Object.entries(obj || {})){
+        normalized.set(normalizeHeaderKey(key), value);
+      }
+      for (const k of keys){
+        const v = normalized.get(normalizeHeaderKey(k));
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      }
+      return '';
+    }
+
+    function makeId(){ return Math.random().toString(36).slice(2,9); }
+
+    // --- Excel loading ---
+    async function handleFiles(fileList){
+      const files = Array.from(fileList || []);
+      for(let i=0;i<files.length;i++){
+        const file = files[i];
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data, {type:'array'});
+        const sheet = wb.Sheets['UURROOSTER'];
+        if(!sheet){ alert(`Bestand \"${file.name}\": tab 'UURROOSTER' niet gevonden.`); continue; }
+        const rows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:true});
+        if(rows.length===0){ continue; }
+
+        // Try to determine student name from the sheet; fallback to filename
+        const first = rows[0];
+        const naam = String(pick(first, ['Naam','NAAM','Naam student'])).trim();
+        const voornaam = String(pick(first, ['Voornaam','VOORNAAM'])).trim();
+        const studentName = (voornaam || naam) ? `${voornaam} ${naam}`.trim() : file.name.replace(/\.[^.]+$/,'');
+        const studentId = `${studentName.toLowerCase()}-${makeId()}`;
+        const color = colorFor(state.students.size);
+
+        const events = [];
+        let minDate = null;
+        for(const r of rows){
+          const d = parseDate(pick(r, ['Datum','DATUM']));
+          const startMin = parseTimeToMinutes(pick(r, ['Startuur les','Startuur training','Startuur','Start']));
+          const endMin   = parseTimeToMinutes(pick(r, ['Einduur les','Einduur training','Einduur','Einde']));
+          if(!d || startMin==null || endMin==null) continue;
+          const ev = {
+            id: makeId(),
+            studentId,
+            studentName,
+            stageplaats: pick(r, ['Stageplaats','School','Naam school','Naam stageplaats','Sportclub','Naam sportclub']).toString(),
+            bezoekplaats: pick(r, ['Bezoek plaats','Bezoekplaats','Locatie','Sporthal']).toString(),
+            adres: pick(r, ['Bezoekadres']).toString(),
+            lesnr: pick(r, ['Lesnummer','Nummer']).toString(),
+            datum: d,
+            startMin,
+            endMin,
+            mentor: pick(r, ['Mentor']).toString(),
+            klas: pick(r, ['Klas','Doelgroep']).toString(),
+            domein: pick(r, ['bewegingsdomein','Bewegingsdomein']).toString(),
+            onderwerp: pick(r, ['Onderwerp']).toString()
+          };
+          if(ev.endMin <= ev.startMin) continue; // skip invalid
+          events.push(ev);
+          state.eventById.set(ev.id, ev);
+          if(!minDate || d.isBefore(minDate)) minDate = d;
+        }
+        state.students.set(studentId, {name:studentName, color, events});
+        if(minDate){
+          if(!state._hasAutoJump){ state.currentMonday = startOfISOWeek(minDate); state._hasAutoJump = true; }
+        }
+      }
+      refreshLegend();
+      render();
+    }
+
+    // --- Rendering ---
+    function render(){
+      renderHeader();
+      renderBody();
+    }
+
+    function renderHeader(){
+      const head = document.getElementById('calHead');
+      head.innerHTML = '';
+      const dayCount = state.showWeekend ? 7 : 5;
+      head.style.gridTemplateColumns = `100px repeat(${dayCount},1fr)`;
+      const timeCol = document.createElement('div');
+      timeCol.textContent = '';
+      head.appendChild(timeCol);
+      for(let i=0;i<dayCount;i++){
+        const d = state.currentMonday.add(i,'day');
+        const div = document.createElement('div');
+        div.textContent = d.format('dddd DD/MM');
+        head.appendChild(div);
+      }
+      document.getElementById('weekTitle').textContent = `Week ${state.currentMonday.isoWeek()} – ${state.currentMonday.format('DD MMM')} – ${state.currentMonday.add(6,'day').format('DD MMM YYYY')}`;
+      document.getElementById('weekPicker').value = state.currentMonday.format('YYYY-MM-DD');
+    }
+
+    function renderBody(){
+      const body = document.getElementById('calBody');
+      body.innerHTML = '';
+      const dayCount = state.showWeekend ? 7 : 5;
+      body.style.gridTemplateColumns = `100px repeat(${dayCount},1fr)`;
+
+      // hours column
+      const hoursCol = document.createElement('div');
+      hoursCol.className = 'hours';
+      for(let h=HOUR_START; h<=HOUR_END; h++){
+        const div = document.createElement('div');
+        div.className = 'hour';
+        div.textContent = `${String(h).padStart(2,'0')}:00`;
+        hoursCol.appendChild(div);
+      }
+      body.appendChild(hoursCol);
+
+      // day columns
+      const dayCols = [];
+      for(let i=0;i<dayCount;i++){
+        const col = document.createElement('div');
+        col.className = 'day-col';
+        col.dataset.index = i;
+        col.style.height = `${(HOUR_END - HOUR_START + 1) * ROW_HEIGHT}px`;
+        body.appendChild(col);
+        dayCols.push(col);
+      }
+
+      // gather all events in the visible week
+      const perDay = Array.from({length:7}, ()=>[]);
+      for(const [studentId, student] of state.students){
+        for(const ev of student.events){
+          if(!ev.datum.isBetween(state.currentMonday, state.currentMonday.add(7,'day'), 'day', '[)')) continue;
+          const dayIdx = ev.datum.diff(state.currentMonday, 'day');
+          perDay[dayIdx].push({ev, student});
+        }
+      }
+
+      // layout and render per day
+      for(let d=0; d<dayCount; d++){
+        const col = dayCols[d];
+        const items = perDay[d];
+        const laidOut = computeLayout(items);
+        for(const it of laidOut){
+          const {ev, student, lane, lanesInGroup} = it;
+          const minutesFromStart = clamp(ev.startMin - HOUR_START*60, 0, (HOUR_END-HOUR_START+1)*60);
+          const duration = clamp(ev.endMin - ev.startMin, 15, 24*60);
+          const top = (minutesFromStart/60)*ROW_HEIGHT;
+          const height = (duration/60)*ROW_HEIGHT - 4; // small gap
+          const gap = 6; // px gap between overlapping columns
+          const widthPct = 100/lanesInGroup;
+          const leftPct = lane * widthPct;
+
+          const div = document.createElement('div');
+          div.className = 'event';
+          div.style.top = `${top}px`;
+          div.style.height = `${height}px`;
+          div.style.left = `calc(${leftPct}% + 6px)`; // base 6px padding already present
+          div.style.width = `calc(${widthPct}% - ${gap}px)`;
+          div.style.right = 'auto';
+          div.style.borderColor = student.color.border;
+          div.style.borderLeftColor = student.color.border;
+          div.style.background = student.color.bg;
+
+          div.dataset.studentId = ev.studentId;
+          div.dataset.eventId = ev.id;
+
+          div.innerHTML = `
+            <div class="title">${escapeHtml(ev.studentName)} <span class="small">(${escapeHtml(ev.klas)})</span></div>
+            <div class="meta">${toHHMM(ev.startMin)}–${toHHMM(ev.endMin)} • ${escapeHtml(ev.bezoekplaats || ev.stageplaats)}</div>
+            <div class="small">${escapeHtml(ev.onderwerp)}</div>
+          `;
+
+          updateDimState(div);
+
+          div.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSelection(ev.studentId, ev.id); });
+          attachTooltip(div, ev);
+
+          col.appendChild(div);
+        }
+      }
+    }
+
+    function toHHMM(min){
+      const h = Math.floor(min/60);
+      const m = min%60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    function escapeHtml(s){
+      return String(s||'').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    }
+
+    function refreshLegend(){
+      const legend = document.getElementById('legend');
+      legend.innerHTML = '';
+      let index=0;
+      for(const [id, s] of state.students){
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.innerHTML = `<i style="background:${s.color.border}"></i>${escapeHtml(s.name)}`;
+        chip.title = `${s.events.length} events`;
+        legend.appendChild(chip);
+        index++;
+      }
+    }
+
+    // Selection / greying logic
+    function toggleSelection(studentId, eventId){
+      const current = state.selectedByStudent.get(studentId);
+      if(current === eventId){
+        state.selectedByStudent.delete(studentId);
+      } else {
+        state.selectedByStudent.set(studentId, eventId);
+      }
+      // update DOM
+      document.querySelectorAll(`.event[data-student-id="${CSS.escape(studentId)}"]`).forEach(el=>updateDimState(el));
+    }
+
+    
+    function updateDimState(el){
+      const sid = el.dataset.studentId;
+      const eid = el.dataset.eventId;
+      const selected = state.selectedByStudent.get(sid);
+      el.setAttribute('data-selected', selected === eid ? 'true' : 'false');
+      el.setAttribute('data-dim', selected && selected !== eid ? 'true' : 'false');
+      // If hide mode is on, keep dimmed ones hidden immediately
+      if (document.body.classList.contains('hide-overbodig') && el.getAttribute('data-dim') === 'true'){
+        el.style.display = 'none';
+      } else {
+        el.style.display = '';
+      }
+    }
+    
+
+    function computeLayout(items){
+      // items: [{ev, student}]
+      // Sort by start, then end
+      const byStart = [...items].sort((a,b)=> a.ev.startMin - b.ev.startMin || a.ev.endMin - b.ev.endMin);
+      // Build groups of overlapping events (any chain overlap)
+      const groups = [];
+      let current = null;
+      for(const it of byStart){
+        if(!current){ current = {items:[it], maxEnd: it.ev.endMin}; continue; }
+        if(it.ev.startMin < current.maxEnd){ // overlaps chain
+          current.items.push(it);
+          current.maxEnd = Math.max(current.maxEnd, it.ev.endMin);
+        } else {
+          groups.push(current); current = {items:[it], maxEnd: it.ev.endMin};
+        }
+      }
+      if(current) groups.push(current);
+
+      const result = [];
+      for(const g of groups){
+        // lane assignment with max lanes tracked for the whole group
+        const lanesEnd = [];
+        const placed = [];
+        let maxLanes = 0;
+        const sorted = g.items.sort((a,b)=> a.ev.startMin - b.ev.startMin || a.ev.endMin - b.ev.endMin);
+        for(const it of sorted){
+          let lane = 0;
+          while(lane < lanesEnd.length && lanesEnd[lane] > it.ev.startMin){ lane++; }
+          lanesEnd[lane] = it.ev.endMin;
+          maxLanes = Math.max(maxLanes, lanesEnd.length);
+          placed.push({...it, lane});
+        }
+        for(const p of placed){
+          result.push({...p, lanesInGroup: maxLanes});
+        }
+      }
+      return result;
+    }
+
+    function attachTooltip(el, ev){
+      const tip = document.getElementById('tooltip');
+      const html = `
+        <div class="tiptitle">${escapeHtml(ev.studentName)} – ${ev.datum.format('DD/MM/YYYY')} ${toHHMM(ev.startMin)}–${toHHMM(ev.endMin)}</div>
+        <table>
+          <tr><td>Lesnr</td><td>${escapeHtml(ev.lesnr)}</td></tr>
+          <tr><td>Stageplaats</td><td>${escapeHtml(ev.stageplaats)}</td></tr>
+          ${ev.bezoekplaats ? `<tr><td>Bezoekplaats</td><td>${escapeHtml(ev.bezoekplaats)}</td></tr>` : ''}
+          <tr><td>Bezoekadres</td><td>${escapeHtml(ev.adres)}</td></tr>
+          <tr><td>Mentor</td><td>${escapeHtml(ev.mentor)}</td></tr>
+          <tr><td>Klas</td><td>${escapeHtml(ev.klas)}</td></tr>
+          <tr><td>Bewegingsdomein</td><td>${escapeHtml(ev.domein)}</td></tr>
+          <tr><td>Onderwerp</td><td>${escapeHtml(ev.onderwerp)}</td></tr>
+        </table>`;
+
+      const move = (e)=>{
+        tip.style.display = 'block';
+        tip.innerHTML = html;
+        const pad = 12;
+        let x = e.clientX + pad;
+        let y = e.clientY + pad;
+        const rect = tip.getBoundingClientRect();
+        if(x + rect.width > window.innerWidth - 10) x = e.clientX - rect.width - pad;
+        if(y + rect.height > window.innerHeight - 10) y = e.clientY - rect.height - pad;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      };
+      const leave = ()=>{ tip.style.display = 'none'; };
+      el.addEventListener('mousemove', move);
+      el.addEventListener('mouseleave', leave);
+    }
+
+    // --- Controls ---
+    document.getElementById('prevWeek').addEventListener('click', ()=>{ state.currentMonday = state.currentMonday.subtract(1,'week'); render(); });
+    document.getElementById('nextWeek').addEventListener('click', ()=>{ state.currentMonday = state.currentMonday.add(1,'week'); render(); });
+    document.getElementById('weekPicker').addEventListener('change', (e)=>{
+      const d = dayjs(e.target.value);
+      if(d.isValid()){ state.currentMonday = startOfISOWeek(d); render(); }
+    });
+
+    document.getElementById('toggleWeekendBtn').addEventListener('click', ()=>{
+      state.showWeekend = !state.showWeekend;
+      const btn = document.getElementById('toggleWeekendBtn');
+      btn.textContent = state.showWeekend ? 'Verberg weekend' : 'Toon weekend';
+      render();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', ()=>{
+      state.students.clear();
+      state.selectedByStudent.clear();
+      state.eventById.clear();
+      refreshLegend();
+      render();
+    });
+
+    document.getElementById('resetSelectionsBtn').addEventListener('click', ()=>{
+      state.selectedByStudent.clear();
+      document.querySelectorAll('.event').forEach(updateDimState);
+    });
+
+    // Export PDF
+    document.getElementById('exportPdfBtn').addEventListener('click', exportSelectedPdf);
+
+    function collectSelectedEventsInWeek(){
+      const res = [];
+      for(const [sid, evId] of state.selectedByStudent){
+        // find event
+        const ev = state.eventById.get(evId) || (state.students.get(sid)?.events || []).find(e=>e.id===evId);
+        if(!ev) continue;
+        if(ev.datum.isBetween(state.currentMonday, state.currentMonday.add(7,'day'), 'day', '[)')){
+          res.push(ev);
+        }
+      }
+      res.sort((a,b)=> a.datum.valueOf() - b.datum.valueOf() || a.startMin - b.startMin);
+      return res;
+    }
+
+    function exportSelectedPdf(){
+      const events = collectSelectedEventsInWeek();
+      if(events.length===0){
+        alert('Geen geselecteerde events in deze week.');
+        return;
+      }
+const { jsPDF } = window.jspdf || {};
+      if(!jsPDF){ alert('Kon jsPDF niet laden – controleer internetverbinding.'); return; }
+      const doc = new jsPDF({orientation:'landscape', unit:'pt', format:'a4'});
+      const title = `Geselecteerde stagebezoeken – Week ${state.currentMonday.isoWeek()} (${state.currentMonday.format('DD/MM')} – ${state.currentMonday.add(6,'day').format('DD/MM/YYYY')})`;
+      doc.setFontSize(15);
+      doc.text(title, 40, 40);
+      const body = events.map(ev => [
+        ev.datum.format('ddd DD/MM/YYYY'),
+        `${toHHMM(ev.startMin)}–${toHHMM(ev.endMin)}`,
+        ev.studentName,
+        ev.klas,
+        ev.bezoekplaats ? `${ev.stageplaats} – ${ev.bezoekplaats}` : ev.stageplaats,
+        ev.adres,
+        ev.mentor,
+        ev.domein,
+        ev.onderwerp
+      ]);
+      if(typeof doc.autoTable === 'function'){
+        doc.autoTable({
+          head: [["Datum","Tijd","Student","Klas","Stageplaats","Bezoekadres","Mentor","Domein","Onderwerp"]],
+          body,
+          startY: 60,
+          styles: { fontSize: 10, cellPadding: 5, overflow: 'linebreak' },
+          headStyles: { fillColor: [14,165,233] },
+          margin: { left: 30, right: 30 },
+          tableWidth: 'auto',
+          columnStyles: {
+            0: { cellWidth: 80 },   // Datum
+            1: { cellWidth: 70 },   // Tijd
+            2: { cellWidth: 120 },  // Student
+            3: { cellWidth: 60 },   // Klas
+            4: { cellWidth: 110 },  // Stageplaats
+            5: { cellWidth: 200 },  // Bezoekadres
+            6: { cellWidth: 90 },   // Mentor
+            7: { cellWidth: 90 },   // Domein
+            8: { cellWidth: 200 }   // Onderwerp
+          }
+        });
+      } else {
+        // Fallback simple layout
+        let y = 70;
+        doc.setFontSize(10);
+        doc.text('Datum',40,y); doc.text('Tijd',100,y); doc.text('Student',160,y); doc.text('Klas',300,y); doc.text('Stageplaats',350,y);
+        y += 16;
+        for(const row of body){
+          const [datum, tijd, student, klas, stage, adres, mentor, domein, onderwerp] = row;
+          if(y > 780){ doc.addPage(); y = 40; }
+          doc.text(String(datum),40,y);
+          doc.text(String(tijd),100,y);
+          doc.text(String(student),160,y);
+          doc.text(String(klas),300,y);
+          doc.text(String(stage),350,y);
+          y += 14;
+        }
+      }
+      doc.save(`Stagebezoeken-week-${state.currentMonday.isoWeek()}.pdf`);
+    }
+
+    // File input + drag & drop
+    const input = document.getElementById('fileInput');
+    const dz = document.getElementById('dropzone');
+    input.addEventListener('change', (e)=> handleFiles(e.target.files));
+
+    ;['dragenter','dragover'].forEach(evt=>{
+      dz.addEventListener(evt, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.add('drag'); });
+    });
+    ;['dragleave','drop'].forEach(evt=>{
+      dz.addEventListener(evt, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag'); });
+    });
+    dz.addEventListener('drop', (e)=>{ const files = e.dataTransfer.files; handleFiles(files); });
+
+    // Initial render
+    render();
+  
+
+
+</script>
+<script>
+
+// === TOGGLE VERBERG OVERBODIGE EVENTS ===
+(function(){
+  let hiddenMode = false;
+  function updateHiddenButton(){
+    const btn = document.getElementById('toggleHiddenBtn');
+    if(!btn) return;
+    if(hiddenMode){
+      btn.textContent = '👁️‍🗙 Toon overbodige events';
+      btn.style.backgroundColor = '#e74c3c';
+      btn.style.color = '#fff';
+    }else{
+      btn.textContent = 'Verberg overbodige events';
+      btn.style.backgroundColor = '';
+      btn.style.color = '';
+    }
+  }
+  function applyMode(){
+    document.body.classList.toggle('hide-overbodig', hiddenMode);
+    document.querySelectorAll('.event[data-dim="true"]').forEach(el=>{
+      el.style.display = hiddenMode ? 'none' : '';
+    });
+  }
+  function toggleHidden(){
+    hiddenMode = !hiddenMode;
+    applyMode();
+    updateHiddenButton();
+  }
+  function attach(){
+    const btn = document.getElementById('toggleHiddenBtn');
+    if(btn && !btn.dataset.bound){
+      btn.addEventListener('click', toggleHidden);
+      btn.dataset.bound = '1';
+      applyMode();
+      updateHiddenButton();
+    }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', attach);
+  } else {
+    setTimeout(attach, 0);
+  }
+})();
+// === END TOGGLE VERBERG ===
+
+
+// === ICS EXPORT MODULE ===
+(function(){
+  function formatICSDate(dt){ return dt.format('YYYYMMDD[T]HHmmss'); }
+  function sanitizeICS(text){
+    return String(text||'').replace(/\r?\n/g,"\\n").replace(/,/g,"\\,").replace(/;/g,"\\;");
+  }
+  function buildVEvent(ev){
+    const start = ev.datum.hour(Math.floor(ev.startMin/60)).minute(ev.startMin%60).second(0);
+    const end   = ev.datum.hour(Math.floor(ev.endMin/60)).minute(ev.endMin%60).second(0);
+    const summary = `${ev.studentName} (${ev.klas}) – ${ev.bezoekplaats || ev.stageplaats || ''}`.trim();
+    const descriptionParts = [
+      ev.onderwerp ? `Onderwerp: ${ev.onderwerp}` : '',
+      ev.domein ? `Domein: ${ev.domein}` : '',
+      ev.lesnr ? `Lesnr: ${ev.lesnr}` : '',
+      ev.mentor ? `Mentor: ${ev.mentor}` : '',
+      ev.bezoekplaats ? `Bezoekplaats: ${ev.bezoekplaats}` : '',
+      ev.adres ? `Adres: ${ev.adres}` : ''
+    ].filter(Boolean);
+    const description = descriptionParts.join('\\n');
+    const locName = ev.bezoekplaats || ev.stageplaats || '';
+    const loc = ev.adres ? (locName ? `${locName} – ${ev.adres}` : ev.adres) : locName;
+    const lines = ['BEGIN:VEVENT',
+      `UID:${ev.id}@stageplanner`,
+      `DTSTAMP:${formatICSDate(dayjs())}`,
+      `DTSTART:${formatICSDate(start)}`,
+      `DTEND:${formatICSDate(end)}`,
+      `SUMMARY:${sanitizeICS(summary)}`];
+    if(loc) lines.push(`LOCATION:${sanitizeICS(loc)}`);
+    if(description) lines.push(`DESCRIPTION:${sanitizeICS(description)}`);
+    lines.push('END:VEVENT');
+    return lines.join("\r\n");
+  }
+  function exportSelectedIcs(){
+    try{
+      const events = collectSelectedEventsInWeek();
+      if(!events || !events.length){ alert('Geen geselecteerde events in deze week.'); return; }
+      const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Stagebezoeken Weekoverzicht//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+      for(const ev of events){ lines.push(buildVEvent(ev)); }
+      lines.push('END:VCALENDAR');
+      const icsContent = lines.join("\r\n");
+      const blob = new Blob([icsContent], {type:'text/calendar;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `Stagebezoeken-week-${state.currentMonday.isoWeek()}.ics`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }catch(e){ console.error('ICS export error', e); alert('Er ging iets mis bij het maken van het ICS-bestand.'); }
+  }
+  function attach(){
+    const btn = document.getElementById('exportIcsBtn');
+    if(btn && !btn.dataset.icsBound){
+      btn.addEventListener('click', exportSelectedIcs);
+      btn.dataset.icsBound = '1';
+    }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', attach);
+  } else {
+    setTimeout(attach, 0);
+  }
+})();
+// === END ICS EXPORT MODULE ===
+
+</script>
+</body>
+</html>
